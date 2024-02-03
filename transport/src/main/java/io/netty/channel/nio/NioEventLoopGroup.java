@@ -70,6 +70,10 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
     }
 
     public NioEventLoopGroup(int nThreads, Executor executor) {
+        //SelectorProvider.provider() 调用的是java,nio的加载实现，取决于当前的jdk对于对于当前系统的实现，jdk的平台无关性，
+        // 方式1：可以通过java.nio.channels.spi.SelectorProvider这个变量设置具体的实现类的全路径名，并使用class fro name初始化SelectorProvider
+        // 方式2：可以通过java自己的spi，serviceloader去加载固定目录下的实现的类。
+        // 方式3：方式1和方式2都没有使用，则会使用jdk自己提供的针对当前操作系统的实现，得到当前系统的SelectorProvider。
         this(nThreads, executor, SelectorProvider.provider());
     }
 
