@@ -40,12 +40,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * (default is 1 second).  Please note it is not scalable to schedule large number of tasks to this executor;
  * use a dedicated executor.
  */
+
+//当任务队列中没有待处理的任务，1秒钟后，它将关闭线程，有新的任务加入，线程重新创建并启动
 public final class GlobalEventExecutor extends AbstractScheduledEventExecutor implements OrderedEventExecutor {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(GlobalEventExecutor.class);
 
     private static final long SCHEDULE_QUIET_PERIOD_INTERVAL;
 
     static {
+        //io.netty.globalEventExecutor.quietPeriodSeconds或者1S为空闲间隔.
         int quietPeriod = SystemPropertyUtil.getInt("io.netty.globalEventExecutor.quietPeriodSeconds", 1);
         if (quietPeriod <= 0) {
             quietPeriod = 1;
@@ -58,6 +61,8 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     public static final GlobalEventExecutor INSTANCE = new GlobalEventExecutor();
 
     final BlockingQueue<Runnable> taskQueue = new LinkedBlockingQueue<Runnable>();
+
+    //一个任务，第一个参数表示1秒后到执行时间，第二个参数表示每次执行间隔1秒。
     final ScheduledFutureTask<Void> quietPeriodTask = new ScheduledFutureTask<Void>(
             this, Executors.<Void>callable(new Runnable() {
         @Override
@@ -83,6 +88,11 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     private final Future<?> terminationFuture = new FailedFuture<Object>(this, new UnsupportedOperationException());
 
     private GlobalEventExecutor() {
+        //构造参数把quietPeriodTask加入到底层队列，底层队列是有顺序的
+        //根据quietPeriodTask它判断底层队列是否还有新的任务
+        //这里调用了scheduledTaskQueue()方法，底层已经创建了scheduledTaskQueue
+        //并把noop标记作用的队列加入到父类排序队列，这个任务永远不会删除，每次运行后1秒以后再次运行。
+        //它的作用是排序，它出现了说明系统过了1秒，可以结合队列的数量判断队列1秒过后是否还有任务。
         scheduledTaskQueue().add(quietPeriodTask);
         threadFactory = ThreadExecutorMap.apply(new DefaultThreadFactory(
                 DefaultThreadFactory.toPoolName(getClass()), false, Thread.NORM_PRIORITY, null), this);
@@ -96,7 +106,9 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     Runnable takeTask() {
         BlockingQueue<Runnable> taskQueue = this.taskQueue;
         for (;;) {
+            //父类排序度列，取出头元素但不移除元素
             ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
+            //初始化时已经加了quitetask.
             if (scheduledTask == null) {
                 Runnable task = null;
                 try {
@@ -106,10 +118,12 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
                 }
                 return task;
             } else {
+                //如果delayNanos>0说明没到执行时间
                 long delayNanos = scheduledTask.delayNanos();
                 Runnable task = null;
                 if (delayNanos > 0) {
                     try {
+                        //去任务队列里面去拿任务
                         task = taskQueue.poll(delayNanos, TimeUnit.NANOSECONDS);
                     } catch (InterruptedException e) {
                         // Waken up.
@@ -132,6 +146,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
         }
     }
 
+    //把quitetask放到任务队列里面，其实就是不断的等待新的任务进来
     private void fetchFromScheduledTaskQueue() {
         long nanoTime = getCurrentTimeNanos();
         Runnable scheduledTask = pollScheduledTask(nanoTime);
@@ -222,6 +237,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     }
 
     private void execute0(@Schedule Runnable task) {
+        //执行任务，加入队列，如果当前执行器没启动则启动
         addTask(ObjectUtil.checkNotNull(task, "task"));
         if (!inEventLoop()) {
             startThread();
@@ -229,6 +245,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
     }
 
     private void startThread() {
+        //原子判断线程是否启动,返回true说明之前没启动
         if (started.compareAndSet(false, true)) {
             final Thread t = threadFactory.newThread(taskRunner);
             // Set to null to ensure we not create classloader leaks by holds a strong reference to the inherited
@@ -263,7 +280,8 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
                     } catch (Throwable t) {
                         logger.warn("Unexpected exception from the global event executor: ", t);
                     }
-
+                    //如果Task不是quietPeriodTask对象，则继续循环
+                    //如果是quietPeriodTask对象，说明1秒时间过了没有其它任务，需要判断队列是否已经空了，如果空了则结束线程。
                     if (task != quietPeriodTask) {
                         continue;
                     }
@@ -271,6 +289,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
 
                 Queue<ScheduledFutureTask<?>> scheduledTaskQueue = GlobalEventExecutor.this.scheduledTaskQueue;
                 // Terminate if there is no task in the queue (except the noop task).
+                //如果类队列为空，父类队列只有noop-task(quietPeriodTask),说明已经没用后续任务了
                 if (taskQueue.isEmpty() && (scheduledTaskQueue == null || scheduledTaskQueue.size() == 1)) {
                     // Mark the current thread as stopped.
                     // The following CAS must always success and must be uncontended,
@@ -281,6 +300,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
                     // Check if there are pending entries added by execute() or schedule*() while we do CAS above.
                     // Do not check scheduledTaskQueue because it is not thread-safe and can only be mutated from a
                     // TaskRunner actively running tasks.
+                    //如果在此时刻，其它线程调用了execute方法，那么队列数量会增加,就不会进入下面方法。
                     if (taskQueue.isEmpty()) {
                         // A) No new task was added and thus there's nothing to handle
                         //    -> safe to terminate because there's nothing left to do
@@ -290,6 +310,7 @@ public final class GlobalEventExecutor extends AbstractScheduledEventExecutor im
                     }
 
                     // There are pending tasks added again.
+                    //如果在此时刻，其它线程调用了execute方法，那么队列数量会增加,cas失败结束
                     if (!started.compareAndSet(false, true)) {
                         // startThread() started a new thread and set 'started' to true.
                         // -> terminate this thread so that the new thread reads from taskQueue exclusively.

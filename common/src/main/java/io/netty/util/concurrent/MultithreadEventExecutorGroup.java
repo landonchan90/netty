@@ -57,6 +57,8 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
      */
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor, Object... args) {
+        //传入默认的选择执行线程的选择工厂，工厂里有对应的选择方式，而且针对2的n次方和非这种情况的2种选择方式。
+        //新传入的这个选择工厂，其实是为了在初始化线程组后，下次用哪一个线程，做定位用。
         this(nThreads, executor, DefaultEventExecutorChooserFactory.INSTANCE, args);
     }
 
@@ -70,14 +72,19 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      */
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
                                             EventExecutorChooserFactory chooserFactory, Object... args) {
+        //判断线程数>0
         checkPositive(nThreads, "nThreads");
 
         if (executor == null) {
+            //当nioeventloopgroup bossgroup或者workgroup初始化的时候传入的是null的时候执行。
+            //newDefaultThreadFactory()是一个默认创建线程的工厂，线程的名字以classname+poolId(AtomicInteger)+nextId(AtomicInteger)组装而成。
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
-
+        //初始化线程组,意思是这个nioeventloopgroup下面初始化了这么多的线程。这里是executor，真正使用的时候是execute(线程的方法)。
         children = new EventExecutor[nThreads];
 
+        //初始化各个数组位置的事件执行器。
+        //如果初始化过程中有事件执行器，初始化失败了，就优雅关闭已经成功的。如果已经成功的执行器并由关闭，则等待MAX_value时间后再进行下次循环。
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
@@ -108,8 +115,10 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         }
 
+        //通过之前的选择工厂，来初始化这次要选择的执行器。
         chooser = chooserFactory.newChooser(children);
 
+        //声明回调终止函数，给每个执行器注册，用来判断所有的执行器已经关闭了，如果关闭了，sucess设为null.
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
@@ -119,10 +128,11 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         };
 
+        //注册回调函数.
         for (EventExecutor e: children) {
             e.terminationFuture().addListener(terminationListener);
         }
-
+        //把这些执行器放入不可变set，赋值readonlyChildren。
         Set<EventExecutor> childrenSet = new LinkedHashSet<EventExecutor>(children.length);
         Collections.addAll(childrenSet, children);
         readonlyChildren = Collections.unmodifiableSet(childrenSet);
