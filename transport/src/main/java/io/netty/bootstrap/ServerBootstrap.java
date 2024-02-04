@@ -130,9 +130,11 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     @Override
     void init(Channel channel) {
+        //设置channel options,setAttributes.
         setChannelOptions(channel, newOptionsArray(), logger);
         setAttributes(channel, newAttributesArray());
 
+        //之前在反射初始化channel的时候，已经用DefaultChannelPipelines生成了。
         ChannelPipeline p = channel.pipeline();
 
         final EventLoopGroup currentChildGroup = childGroup;
@@ -141,15 +143,25 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = newAttributesArray(childAttrs);
         final Collection<ChannelInitializerExtension> extensions = getInitializerExtensions();
 
+
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
                 ChannelHandler handler = config.handler();
+                /**
+                 * 在pipeline初始化的时候会构建头尾两个处理器 HeadContext 和 TailContext
+                 * 这里再将demo中设置的 LoggingHandler添加到pipeline中
+                 * 这样就变成了 HeadContext -> LoggingHandler -> TailContext
+                 */
                 if (handler != null) {
                     pipeline.addLast(handler);
                 }
 
+                /**
+                 * 后面的register方法会设置通道的执行线程 EventLoop
+                 * 使用该线程异步执行为pipeline中添加一个处理器 ServerBootstrapAcceptor
+                 */
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {

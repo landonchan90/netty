@@ -109,6 +109,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * {@link Channel} implementation has no no-args constructor.
      */
     public B channel(Class<? extends C> channelClass) {
+        // 入参是要使用的通道类型，然后初始化一个反射创建Channel实例的工厂
         return channelFactory(new ReflectiveChannelFactory<C>(
                 ObjectUtil.checkNotNull(channelClass, "channelClass")
         ));
@@ -280,25 +281,31 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * Create a new {@link Channel} and bind it.
      */
     public ChannelFuture bind(SocketAddress localAddress) {
+        // 校验有没有绑定 父线程组group 和 通道channel
         validate();
         return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        //ServerSocketChannel还未创建，已经设置了父线程组和channel工厂。
         final ChannelFuture regFuture = initAndRegister();
+        // 从异步结果中获取channel
         final Channel channel = regFuture.channel();
+        // 获取异步操作执行过程中发生的异常
         if (regFuture.cause() != null) {
             return regFuture;
         }
-
+        // 判断当前异步操作是否完成：或者是成功，或者是异常
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
+            // 创建一个可修改的异步结果对象channelFuture
             ChannelPromise promise = channel.newPromise();
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
+            // 为异步操作添加监听器
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
@@ -321,8 +328,10 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     final ChannelFuture initAndRegister() {
+        //前面并没有创建serversockerchannel,只是赋值了创建工厂。
         Channel channel = null;
         try {
+            //用创建工厂创建channel，简单的讲，其实就是反射创建指定类型的channel。
             channel = channelFactory.newChannel();
             init(channel);
         } catch (Throwable t) {
@@ -336,6 +345,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
+        //将通道注册到线程组中某个线程的Selector上
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

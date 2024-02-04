@@ -42,28 +42,34 @@ public final class EchoServer {
 
         // Configure the server.
         //创建bossgroup
+        // selector初始化在这里
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
         EventLoopGroup workerGroup = new NioEventLoopGroup();
         final EchoServerHandler serverHandler = new EchoServerHandler();
         try {
             ServerBootstrap b = new ServerBootstrap();
             b.group(bossGroup, workerGroup)
-             .channel(NioServerSocketChannel.class)
-             .option(ChannelOption.SO_BACKLOG, 100)
-             .handler(new LoggingHandler(LogLevel.INFO))
-             .childHandler(new ChannelInitializer<SocketChannel>() {
-                 @Override
-                 public void initChannel(SocketChannel ch) throws Exception {
-                     ChannelPipeline p = ch.pipeline();
-                     if (sslCtx != null) {
-                         p.addLast(sslCtx.newHandler(ch.alloc()));
-                     }
-                     //p.addLast(new LoggingHandler(LogLevel.INFO));
-                     p.addLast(serverHandler);
-                 }
-             });
+                // option / handler / attr方法都定义在AbstractBootstrap中
+                // 定义在AbstractBootstrap中：handler: 针对服务的ServerSocketChannel的处理器（服务端接收的主要是客户端的连接所以是处理连接请求的处理器）
+                .channel(NioServerSocketChannel.class)
+                .option(ChannelOption.SO_BACKLOG, 100)
+                .handler(new LoggingHandler(LogLevel.INFO))
+                // 针对子线程组设置的参数都定义在ServerBootstrap（AbstractBootstrap的子类）中
+                // 为SocketChannel添加处理器链
+                .childHandler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    public void initChannel(SocketChannel ch) throws Exception {
+                        ChannelPipeline p = ch.pipeline();
+                        if (sslCtx != null) {
+                            p.addLast(sslCtx.newHandler(ch.alloc()));
+                        }
+                        //p.addLast(new LoggingHandler(LogLevel.INFO));
+                        p.addLast(serverHandler);
+                    }
+                });
 
             // Start the server.
+
             ChannelFuture f = b.bind(PORT).sync();
 
             // Wait until the server socket is closed.

@@ -51,9 +51,12 @@ public final class ThreadExecutorMap {
     public static Executor apply(final Executor executor, final EventExecutor eventExecutor) {
         ObjectUtil.checkNotNull(executor, "executor");
         ObjectUtil.checkNotNull(eventExecutor, "eventExecutor");
+        //这里的executor是父executor,生成一个新的executor
         return new Executor() {
             @Override
             public void execute(final Runnable command) {
+                // executor.execute()会使用这个总的executor所绑定的线程factory创建一个线程
+                //ThreadPerTaskExecutor.execute
                 executor.execute(apply(command, eventExecutor));
             }
         };
@@ -69,8 +72,10 @@ public final class ThreadExecutorMap {
         return new Runnable() {
             @Override
             public void run() {
+                // 为了保证线程安全，这里为当前线程指定其所关联的eventLoop
                 setCurrentEventExecutor(eventExecutor);
                 try {
+                    // 真正任务的执行是在这里开始的
                     command.run();
                 } finally {
                     setCurrentEventExecutor(null);

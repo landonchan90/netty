@@ -50,6 +50,7 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
  */
 public abstract class SingleThreadEventExecutor extends AbstractScheduledEventExecutor implements OrderedEventExecutor {
 
+    //任务队列大小
     static final int DEFAULT_MAX_PENDING_EXECUTOR_TASKS = Math.max(16,
             SystemPropertyUtil.getInt("io.netty.eventexecutor.maxPendingTasks", Integer.MAX_VALUE));
 
@@ -168,7 +169,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         super(parent);
         this.addTaskWakesUp = addTaskWakesUp;
         this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
+        // 使用总的executor为当前eventLoop创建一个executor
+        // 这个executor执行的时候会创建一个新线程处理任务
         this.executor = ThreadExecutorMap.apply(executor, this);
+        // 创建一个任务队列
+        // 处理普通任务的队列，定时任务也放这里面
         this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
         this.rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
@@ -832,9 +837,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void execute(Runnable task, boolean immediate) {
+        // 若当前线程是当前EventLoop所绑定的线程，则返回true，否则返回false
+        // 第一次执行execute肯定是false，线程还没创建呢
         boolean inEventLoop = inEventLoop();
+        // 将任务添加到taskQueue
+        // 此时任务是NioServerChannel注册Selector的任务
         addTask(task);
         if (!inEventLoop) {
+            // 创建并启动线程
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -983,9 +993,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        // 调用当前EventLoop所包含的executor(子executor，可以通过总executor创建线程的那个匿名executor)
         executor.execute(new Runnable() {
             @Override
             public void run() {
+                //绑定线程的核心方法就在这！！！！！！！！
                 thread = Thread.currentThread();
                 if (interrupted) {
                     thread.interrupt();

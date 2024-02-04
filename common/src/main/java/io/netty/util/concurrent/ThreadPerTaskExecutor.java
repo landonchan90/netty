@@ -29,6 +29,9 @@ public final class ThreadPerTaskExecutor implements Executor {
 
     @Override
     public void execute(Runnable command) {
+        //这个factory是DefaultThreadFactory
+        //这个command是被封装过的command
+        // 这里会创建一个线程，并且启动这个线程，就是执行command的run()方法
         threadFactory.newThread(command).start();
     }
 }

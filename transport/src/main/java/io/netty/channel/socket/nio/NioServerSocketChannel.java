@@ -93,7 +93,17 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      * Create a new instance using the given {@link ServerSocketChannel}.
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
+        /**
+         * 调用父类AbstractNioMessageChannel的构造方法
+         * 根据传进去的参数可以推测出：在内部将会为ServerSocketChannel绑定OP_ACCEPT事件
+         */
         super(null, channel, SelectionKey.OP_ACCEPT);
+        /**
+         * 为该服务端通道创建配置 NioServerSocketChannelConfig 是 NioServerSocketChannel 的内部类
+         * 1，javaChannel()方法返回的是上面的channel（ServerSocketChannel）
+         *    ServerSocketChannel.socket() 方法会返回一个该channel对应的ServerSocket
+         * 2，new NioServerSocketChannelConfig 主要是初始化配置 并创建一个“分配器”：AdaptiveRecvByteBufAllocator
+         */
         config = new NioServerSocketChannelConfig(this, javaChannel().socket());
     }
 
