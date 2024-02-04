@@ -1006,6 +1006,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    //nioeventloop开始run
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

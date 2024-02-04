@@ -478,15 +478,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             // 注意此时，eventLoop绑定的线程还没有初始化！！！
             AbstractChannel.this.eventLoop = eventLoop;
             // 判断当前正在执行的线程是否是当前eventLoop所绑定的线程
-            //第一次调用的时候，此时eventLoop 在NioEventLoopGroup构造的时候已经初始化好了，eventLoop绑定的executor也初始化好了，但是NioEventLoopGroup绑定线程还没有初始化好！
-            //第一次当前线程是main,NioEventLoopGroup并没有启动
+            //第一次调用的时候，此时eventLoop 在NioEventLoopGroup构造的时候已经初始化好了，eventLoop绑定的executor也初始化好了，但是NioEventLoop绑定线程还没有初始化好！
+            //第一次当前线程是main,NioEventLoop并没有启动
             if (eventLoop.inEventLoop()) {
                 // 若当前线程是eventLoop绑定线程，则直接让这个线程来完成注册操作
                 register0(promise);
             } else {
                 try {
                     // 当前线程不是eventLoop绑定线程，则首先会创建一个线程，
-                    // 然后使用这个新创建的eventLoop线程来完成注册
+                    // 然后使用这个新创建的eventLoop线程来完成注册,这里是nioeventloop的execute点进去
                     eventLoop.execute(new Runnable() {
                         @Override
                         public void run() {
@@ -512,6 +512,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+                //selector key
                 doRegister();
                 neverRegistered = false;
                 registered = true;
@@ -526,12 +527,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // multiple channel actives if the channel is deregistered and re-registered.
                 if (isActive()) {
                     if (firstRegistration) {
+                        //第一次
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
                         // again so that we process inbound data.
                         //
                         // See https://github.com/netty/netty/issues/4805
+                        //这里开始设置selectkey
                         beginRead();
                     }
                 }

@@ -643,6 +643,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     final void invokeHandlerAddedIfNeeded() {
         assert channel.eventLoop().inEventLoop();
+        //是否第一次
         if (firstRegistration) {
             firstRegistration = false;
             // We are now registered to the EventLoop. It's time to call the callbacks for the ChannelHandlers,
@@ -1395,6 +1396,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
+            //这里才开始
             ctx.fireChannelActive();
 
             readIfIsAutoRead();

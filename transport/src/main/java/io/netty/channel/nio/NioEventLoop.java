@@ -507,6 +507,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     @Override
     protected void run() {
+        //这里就开始主循环，run tasks
         int selectCnt = 0;
         for (;;) {
             try {

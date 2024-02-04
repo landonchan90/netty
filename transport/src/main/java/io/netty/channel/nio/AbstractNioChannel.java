@@ -410,9 +410,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         readPending = true;
 
-        final int interestOps = selectionKey.interestOps();
+        final int interestOps = selectionKey.interestOps();//一开始是0，readInterestOp是16
         if ((interestOps & readInterestOp) == 0) {
-            selectionKey.interestOps(interestOps | readInterestOp);
+            selectionKey.interestOps(interestOps | readInterestOp);//这里才设置成16
         }
     }
 

@@ -235,6 +235,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     static void invokeChannelActive(final AbstractChannelHandlerContext next) {
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            //激活channel
             next.invokeChannelActive();
         } else {
             executor.execute(new Runnable() {
